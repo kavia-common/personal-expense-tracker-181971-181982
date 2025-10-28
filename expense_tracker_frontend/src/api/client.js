@@ -7,18 +7,35 @@ import axios from 'axios';
 const ACCESS_TOKEN_KEY = 'et_access_token';
 const REFRESH_TOKEN_KEY = 'et_refresh_token';
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ * Set the access and refresh tokens in localStorage.
+ */
 export function setTokens({ access, refresh }) {
   /** Set the access and refresh tokens in localStorage. */
   if (access) localStorage.setItem(ACCESS_TOKEN_KEY, access);
   if (refresh) localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
 }
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ * Remove stored tokens from localStorage.
+ */
 export function clearTokens() {
   /** Remove stored tokens from localStorage. */
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Get tokens; useful for components needing direct access.
+ */
+export function getStoredTokens() {
+  return {
+    access: localStorage.getItem(ACCESS_TOKEN_KEY) || null,
+    refresh: localStorage.getItem(REFRESH_TOKEN_KEY) || null,
+  };
 }
 
 function getAccessToken() {
@@ -29,17 +46,8 @@ function getRefreshToken() {
   return localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
-const defaultBase = (() => {
-  try {
-    const origin = window?.location?.origin || '';
-    // default API prefix under same host
-    return `${origin}/api`;
-  } catch {
-    return '/api';
-  }
-})();
-
-const baseURL = process.env.REACT_APP_API_BASE || defaultBase;
+// Determine base URL: use env or fallback to http://localhost:3001/api
+const baseURL = process.env.REACT_APP_API_BASE || 'http://localhost:3001/api';
 
 // Create axios instance
 const api = axios.create({
@@ -69,12 +77,17 @@ async function refreshAccessToken() {
   if (!refresh) {
     throw new Error('No refresh token available');
   }
-  const refreshUrl = '/auth/token/refresh/'; // relative to baseURL
+
+  // The refresh endpoint per acceptance: /api/auth/token/refresh
+  // Our api instance uses baseURL pointing to .../api, so path should be '/auth/token/refresh'
+  const refreshPath = '/auth/token/refresh';
+
   const response = await axios.post(
-    `${baseURL}${refreshUrl.startsWith('/') ? '' : '/'}${refreshUrl}`,
+    `${baseURL}${refreshPath}`,
     { refresh },
     { headers: { 'Content-Type': 'application/json' } }
   );
+
   // Common JWT response field names:
   // Some backends use { access: '...', refresh: '...' } others { access_token: '...' }
   const data = response.data || {};
@@ -104,6 +117,7 @@ api.interceptors.response.use(
       clearTokens();
       return Promise.reject(error);
     }
+    // eslint-disable-next-line no-param-reassign
     originalRequest._retry = true;
 
     try {
@@ -131,13 +145,13 @@ api.interceptors.response.use(
   }
 );
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ * Authenticate user with username/password.
+ * Calls the backend token endpoint and stores the returned tokens.
+ * Returns the token payload.
+ */
 export async function login(username, password) {
-  /**
-   * Authenticate user with username/password.
-   * Calls the backend token endpoint and stores the returned tokens.
-   * Returns the token payload.
-   */
   const url = '/auth/token/'; // relative to baseURL
   const response = await api.post(url, { username, password });
   const data = response.data || {};
@@ -150,5 +164,12 @@ export async function login(username, password) {
   return data;
 }
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ * Logout helper to clear stored tokens.
+ */
+export function logout() {
+  clearTokens();
+}
+
 export default api;
